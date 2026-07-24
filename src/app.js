@@ -581,7 +581,16 @@ function renderLexicon(){
   host.textContent = '';
   const inDoc = state.doc ? new Set(Object.keys(collectAcronyms(state.doc.blocks))) : new Set();
   const keys = Object.keys(state.lexicon)
+    .filter(k => inDoc.has(k) || !(k in DEFAULT_LEXICON))
     .sort((a, b) => (inDoc.has(b) - inDoc.has(a)) || a.localeCompare(b));
+  if (!keys.length){
+    const p = document.createElement('p');
+    p.className = 'hint';
+    p.textContent = state.doc
+      ? 'Nothing in this document needs correcting. Add your own below if you hear something wrong.'
+      : 'Load a document and anything it abbreviates will appear here.';
+    host.appendChild(p);
+  }
   keys.forEach(k => {
     const row = document.createElement('div');
     row.className = 'lex__row';
