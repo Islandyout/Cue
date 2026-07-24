@@ -132,6 +132,7 @@ function load(doc, label){
 }
 
 function rebuild(){
+  if (!state.doc) return;
   const keepBlock = state.script ? (state.script.segments[state.idx] || {}).blockIdx : null;
   state.script = buildScript(state.doc, {
     lexicon: state.lexicon,
@@ -253,6 +254,7 @@ function renderToc(){
 }
 
 function renderMeta(){
+  if (!state.script) return;
   const { segments } = state.script;
   const words = segments.reduce((a, s) => a + s.words, 0);
   const total = estimateSeconds(segments, state.settings.rate);
@@ -277,8 +279,9 @@ function wireTransport(){
   };
   scrub.addEventListener('click', at);
   scrub.addEventListener('keydown', e => {
-    if (e.key === 'ArrowLeft'){ step(-1); e.preventDefault(); }
-    if (e.key === 'ArrowRight'){ step(1); e.preventDefault(); }
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    e.preventDefault(); e.stopPropagation();      // the global handler must not also fire
+    step(e.key === 'ArrowLeft' ? -1 : 1);
   });
 
   const quick = $('#rateQuick');
@@ -300,7 +303,9 @@ async function play(){
     openPanel('#panelVoice', '#btnVoice');
     return;
   }
+  state.engine.unlock && state.engine.unlock();   // inside the click, before any await
   state.playing = true;
+  state.justStarted = true;
   document.body.dataset.playing = '1';
   $('#btnPlay').setAttribute('aria-label','Pause');
   const token = ++state.token;
@@ -324,7 +329,9 @@ async function runLoop(token){
 
     paint();
     if (state.settings.engine === 'cloud') state.cloud.prefetch(segs, state.idx + 1, 3);
-    if (seg.pauseBefore && !(await hold(seg.pauseBefore, token))) return;
+    const skipHold = state.justStarted;
+    state.justStarted = false;
+    if (seg.pauseBefore && !skipHold && !(await hold(seg.pauseBefore, token))) return;
 
     try {
       await state.engine.speak(seg, { rate: state.settings.rate, pitch: state.settings.pitch });
@@ -386,6 +393,7 @@ function jumpChapter(d){
 /* ── painting the current position ────────────────────────── */
 let lastPainted = -1;
 function paint(){
+  if (!state.script) return;
   const segs = state.script.segments;
   const seg = segs[state.idx];
   if (!seg) return;
@@ -616,7 +624,9 @@ function wireExport(){
         status.textContent = `Rendering line ${i} of ${n}…`;
       });
       const a = $('#btnDownload');
-      a.href = URL.createObjectURL(blob);
+      if (a.dataset.url) URL.revokeObjectURL(a.dataset.url);
+      a.dataset.url = URL.createObjectURL(blob);
+      a.href = a.dataset.url;
       a.download = (state.doc.title || 'audiobook').replace(/[^\w\d -]+/g,'').trim().slice(0,60) + '.mp3';
       a.hidden = false;
       status.textContent = `Done — ${(blob.size / 1048576).toFixed(1)} MB.`;

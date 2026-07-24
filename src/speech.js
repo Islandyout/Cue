@@ -47,6 +47,15 @@ export class BrowserEngine {
 
   setVoice(v){ this.voice = v; }
 
+  /** Must run inside the click that starts playback, or mobile stays silent. */
+  unlock(){
+    try {
+      const u = new SpeechSynthesisUtterance(' ');
+      u.volume = 0;
+      this.synth.speak(u);
+    } catch {}
+  }
+
   speak(seg, { rate = 1, pitch = 1 } = {}){
     return new Promise((resolve, reject) => {
       const u = new SpeechSynthesisUtterance(seg.spoken);
@@ -56,7 +65,11 @@ export class BrowserEngine {
       u.volume = clamp(seg.volume || 1, 0, 1);
 
       let settled = false;
-      const finish = (fn, arg) => { if (settled) return; settled = true; this.stopPing(); fn(arg); };
+      const finish = (fn, arg) => {
+        if (settled) return;
+        settled = true; this.stopPing(); this.pending = null; fn(arg);
+      };
+      this.pending = () => finish(resolve);
       u.onend   = () => finish(resolve);
       u.onerror = (e) => (e.error === 'interrupted' || e.error === 'canceled')
         ? finish(resolve)
@@ -80,6 +93,7 @@ export class BrowserEngine {
 
   cancel(){
     this.stopPing();
+    if (this.pending) this.pending();          // never leave runLoop awaiting forever
     if (this.current){ this.current.onend = null; this.current.onerror = null; this.current = null; }
     try { this.synth.cancel(); } catch {}
     return new Promise(r => setTimeout(r, 70));   // Chrome needs a beat after cancel()
@@ -94,6 +108,15 @@ export class CloudEngine {
     this.audio = new Audio();
     this.audio.preload = 'auto';
     this.stopped = false;
+  }
+
+  /** Same idea: a muted play inside the gesture buys us autoplay later. */
+  unlock(){
+    try {
+      this.audio.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQAAAAA=';
+      const p = this.audio.play();
+      p && p.catch(() => {});
+    } catch {}
   }
   get available(){ return !!(this.cfg.key && this.cfg.voice); }
   get needsFile(){ return true; }
@@ -168,13 +191,33 @@ export class CloudEngine {
     try { this.audio.pause(); this.audio.removeAttribute('src'); this.audio.load(); } catch {}
   }
 
-  /** Render a run of segments into one MP3, silences included. */
+  /** Render a run of segments into one MP3, silences included.
+      Encodes as it goes — a two-hour document must never be held
+      in memory as raw audio. */
   async render(segments, onProgress){
     const lame = await loadLame();
     const ctx  = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 44100 });
     const rate = 44100;
-    const chunks = [];
-    let total = 0;
+    const enc  = new lame.Mp3Encoder(1, rate, 96);
+    const out  = [];
+    const BLOCK = 1152;
+    const hush = new Int16Array(BLOCK);
+
+    const feed = (pcm) => {
+      for (let i = 0; i < pcm.length; i += BLOCK){
+        const mp3 = enc.encodeBuffer(pcm.subarray(i, Math.min(i + BLOCK, pcm.length)));
+        if (mp3.length) out.push(new Uint8Array(mp3));
+      }
+    };
+    const silence = (samples) => {
+      let left = samples;
+      while (left > 0){
+        const n = Math.min(BLOCK, left);
+        const mp3 = enc.encodeBuffer(n === BLOCK ? hush : hush.subarray(0, n));
+        if (mp3.length) out.push(new Uint8Array(mp3));
+        left -= n;
+      }
+    };
 
     const speak = segments.filter(s => s.spoken && !s.silent);
     for (let i = 0; i < speak.length; i++){
@@ -182,31 +225,20 @@ export class CloudEngine {
       const buf  = await this.bytes(s.spoken);
       const deco = await ctx.decodeAudioData(buf.slice(0));
       const mono = toMono(deco);
-      chunks.push(mono);
-      total += mono.length;
-      const gap = Math.round(rate * (s.pauseAfter || 0) / 1000);
-      if (gap > 0){ chunks.push(new Float32Array(gap)); total += gap; }
+      const pcm  = new Int16Array(mono.length);
+      for (let k = 0; k < mono.length; k++){
+        const v = Math.max(-1, Math.min(1, mono[k]));
+        pcm[k] = v < 0 ? v * 0x8000 : v * 0x7FFF;
+      }
+      feed(pcm);
+      silence(Math.round(rate * (s.pauseAfter || 0) / 1000));
+      this.cache.delete(s.spoken);          // let each line go once it is encoded
       onProgress && onProgress((i + 1) / speak.length, i + 1, speak.length);
+      if (i % 25 === 0) await new Promise(r => setTimeout(r, 0));  // keep the tab responsive
     }
 
-    const pcm = new Int16Array(total);
-    let at = 0;
-    for (const c of chunks){
-      for (let i = 0; i < c.length; i++){
-        const v = Math.max(-1, Math.min(1, c[i]));
-        pcm[at++] = v < 0 ? v * 0x8000 : v * 0x7FFF;
-      }
-    }
-    const enc = new lame.Mp3Encoder(1, rate, 96);
-    const out = [];
-    const block = 1152;
-    for (let i = 0; i < pcm.length; i += block){
-      const slice = pcm.subarray(i, i + block);
-      const mp3 = enc.encodeBuffer(slice);
-      if (mp3.length) out.push(new Uint8Array(mp3));
-    }
-    const end = enc.flush();
-    if (end.length) out.push(new Uint8Array(end));
+    const tail = enc.flush();
+    if (tail.length) out.push(new Uint8Array(tail));
     ctx.close && ctx.close();
     return new Blob(out, { type:'audio/mpeg' });
   }
