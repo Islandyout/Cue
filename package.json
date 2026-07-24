@@ -1,0 +1,8 @@
+{
+  "name": "cue",
+  "version": "1.0.0",
+  "description": "Turn documents into narrated audio in the browser",
+  "type": "module",
+  "private": true,
+  "scripts": { "test": "node test/script.test.mjs", "serve": "python3 -m http.server 8080" }
+}

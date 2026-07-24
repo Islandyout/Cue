@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cue — read documents aloud</title>
+<meta name="description" content="Upload a document. Cue marks it up like a broadcast script and reads it aloud with pacing, pauses and emphasis.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Literata:opsz,wght@7..72,400;7..72,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./assets/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2315171a'/><rect x='9' y='8' width='3' height='16' rx='1.5' fill='%232f5fa8'/><rect x='15' y='11' width='3' height='10' rx='1.5' fill='%23b4462f'/><rect x='21' y='9' width='3' height='14' rx='1.5' fill='%23f0f1ec'/></svg>">
+</head>
+<body data-state="empty">
+
+<header class="masthead">
+  <a class="brand" href="./" aria-label="Cue, home">
+    <span class="brand__bars" aria-hidden="true"><i></i><i></i><i></i></span>
+    <span class="brand__name">Cue</span>
+  </a>
+  <p class="masthead__file" id="fileChip" hidden></p>
+  <nav class="masthead__tools">
+    <button class="btn btn--ghost" id="btnVoice" aria-expanded="false" aria-controls="panelVoice">Voice</button>
+    <button class="btn btn--ghost" id="btnWords" aria-expanded="false" aria-controls="panelWords">Pronunciation</button>
+    <button class="btn btn--ghost" id="btnExport" aria-expanded="false" aria-controls="panelExport">Export</button>
+    <button class="btn btn--ghost" id="btnNew" hidden>New document</button>
+  </nav>
+</header>
+
+<!-- ─────────────────────────────────────────────── empty state -->
+<main class="stage" id="stageEmpty">
+  <section class="intake">
+    <div class="intake__copy">
+      <p class="eyebrow">Documents, read aloud properly</p>
+      <h1 class="intake__title">Cue reads your document<br>like a script, not a&nbsp;list of&nbsp;words.</h1>
+      <p class="intake__lede">
+        Drop in a report, plan or manual. Cue works out its structure, marks up the pacing,
+        expands the numbers into words a voice can actually say, then reads it —
+        slowing for headings, breathing between sections, leaning on what matters.
+      </p>
+      <ul class="intake__facts">
+        <li><b>Word, PDF, Markdown, text, HTML</b></li>
+        <li><b>Runs entirely in your browser</b> — nothing is uploaded anywhere</li>
+        <li><b>Tables are spoken as sentences</b>, not as loose cells</li>
+      </ul>
+    </div>
+
+    <div class="dropzone" id="dropzone">
+      <input type="file" id="fileInput" accept=".docx,.pdf,.md,.markdown,.txt,.html,.htm" hidden>
+      <div class="dropzone__inner">
+        <svg class="dropzone__icon" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M24 32V10m0 0-7 7m7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 30v6a4 4 0 0 0 4 4h24a4 4 0 0 0 4-4v-6" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <p class="dropzone__lead">Drop a document here</p>
+        <p class="dropzone__sub">or <button class="linkbtn" id="btnBrowse" type="button">choose a file</button></p>
+        <p class="dropzone__formats">.docx · .pdf · .md · .txt · .html</p>
+      </div>
+      <p class="dropzone__sample">
+        No file to hand? <button class="linkbtn" id="btnSample" type="button">Load a sample script</button>
+      </p>
+      <p class="dropzone__error" id="intakeError" role="alert" hidden></p>
+    </div>
+  </section>
+</main>
+
+<!-- ─────────────────────────────────────────────── reader -->
+<main class="reader" id="stageReader" hidden>
+  <aside class="contents" id="contents" aria-label="Contents">
+    <div class="contents__head">
+      <h2 class="contents__title">Contents</h2>
+      <p class="contents__meta" id="docMeta"></p>
+    </div>
+    <ol class="toc" id="toc"></ol>
+  </aside>
+
+  <section class="script" id="script" aria-label="Script" tabindex="-1">
+    <div class="script__inner" id="scriptInner"></div>
+    <div class="script__tail"></div>
+  </section>
+</main>
+
+<!-- ─────────────────────────────────────────────── transport -->
+<div class="desk" id="desk" hidden>
+  <div class="desk__transport">
+    <button class="tbtn" id="btnPrevCh" title="Previous section ([)" aria-label="Previous section">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 8 12l10 6zM6 5v14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
+    </button>
+    <button class="tbtn" id="btnPrev" title="Previous line (←)" aria-label="Previous line">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5 7 12l8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="tbtn tbtn--play" id="btnPlay" title="Play (space)" aria-label="Play">
+      <svg class="ico-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l11-6.5z" fill="currentColor"/></svg>
+      <svg class="ico-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h3v14H9zM14 5h3v14h-3z" fill="currentColor"/></svg>
+    </button>
+    <button class="tbtn" id="btnNext" title="Next line (→)" aria-label="Next line">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 8 7-8 7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="tbtn" id="btnNextCh" title="Next section (])" aria-label="Next section">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l10 6-10 6zM18 5v14" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/></svg>
+    </button>
+  </div>
+
+  <div class="desk__track">
+    <div class="desk__now" id="nowLabel">Ready</div>
+    <div class="scrub" id="scrub" role="slider" tabindex="0" aria-label="Position in document"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+      <div class="scrub__rail"></div>
+      <div class="scrub__marks" id="scrubMarks"></div>
+      <div class="scrub__fill" id="scrubFill"></div>
+      <div class="scrub__head" id="scrubHead"></div>
+    </div>
+    <div class="desk__time"><span id="timeNow">0:00</span> <span class="desk__slash">/</span> <span id="timeTotal">0:00</span></div>
+  </div>
+
+  <div class="desk__right">
+    <span class="onair" id="onair" aria-hidden="true"><i></i>on air</span>
+    <label class="rate">
+      <span class="rate__label">Speed</span>
+      <input type="range" id="rateQuick" min="0.6" max="1.6" step="0.05" value="1">
+      <output id="rateOut">1.00×</output>
+    </label>
+  </div>
+</div>
+
+<!-- ─────────────────────────────────────────────── panels -->
+<div class="panel" id="panelVoice" hidden aria-label="Voice settings">
+  <div class="panel__head"><h2>Voice</h2><button class="panel__x" data-close aria-label="Close">✕</button></div>
+  <div class="panel__body">
+    <fieldset class="field">
+      <legend>Engine</legend>
+      <label class="radio"><input type="radio" name="engine" value="browser" checked> <span><b>This browser</b><small>Free, instant, no account. Quality depends on the voices your device has.</small></span></label>
+      <label class="radio"><input type="radio" name="engine" value="cloud"> <span><b>Cloud voice</b><small>Studio-grade narration using your own API key. Needed to export an audio file.</small></span></label>
+    </fieldset>
+
+    <div data-engine="browser">
+      <label class="field"><span class="field__label">Voice</span>
+        <select id="voiceSelect"></select>
+      </label>
+      <p class="hint" id="voiceHint"></p>
+    </div>
+
+    <div data-engine="cloud" hidden>
+      <label class="field"><span class="field__label">Provider</span>
+        <select id="cloudProvider">
+          <option value="elevenlabs">ElevenLabs</option>
+          <option value="openai">OpenAI-compatible</option>
+        </select>
+      </label>
+      <label class="field"><span class="field__label">API key</span>
+        <input type="password" id="cloudKey" placeholder="Stored only in this browser" autocomplete="off">
+      </label>
+      <label class="field" data-cloud="openai" hidden><span class="field__label">Base URL</span>
+        <input type="text" id="cloudBase" value="https://api.openai.com/v1" spellcheck="false">
+      </label>
+      <label class="field"><span class="field__label">Voice ID</span>
+        <input type="text" id="cloudVoice" placeholder="e.g. 21m00Tcm4TlvDq8ikWAM" spellcheck="false">
+      </label>
+      <label class="field"><span class="field__label">Model</span>
+        <input type="text" id="cloudModel" placeholder="eleven_multilingual_v2" spellcheck="false">
+      </label>
+      <p class="hint">The key stays in this browser and is sent only to the provider you choose. If the provider blocks browser requests you will see a network error — run the app locally or put a small proxy in front.</p>
+    </div>
+
+    <label class="field field--range"><span class="field__label">Base speed <output id="outRate">1.00×</output></span>
+      <input type="range" id="setRate" min="0.6" max="1.6" step="0.05" value="1"></label>
+    <label class="field field--range"><span class="field__label">Pitch <output id="outPitch">1.00</output></span>
+      <input type="range" id="setPitch" min="0.7" max="1.3" step="0.02" value="1"></label>
+    <label class="field field--range"><span class="field__label">Pause length <output id="outPause">1.00×</output></span>
+      <input type="range" id="setPause" min="0.3" max="2.2" step="0.05" value="1"></label>
+
+    <fieldset class="field">
+      <legend>Reading</legend>
+      <label class="check"><input type="checkbox" id="optAnnounce" checked> Announce “Chapter one” before headings</label>
+      <label class="check"><input type="checkbox" id="optEmphasis" checked> Lean on bold text</label>
+      <label class="check"><input type="checkbox" id="optCaptions"> Read figure captions</label>
+      <label class="field field--inline"><span class="field__label">Tables</span>
+        <select id="optTables">
+          <option value="full" selected>Read every row</option>
+          <option value="summary">Summarise only</option>
+          <option value="skip">Skip</option>
+        </select>
+      </label>
+    </fieldset>
+  </div>
+</div>
+
+<div class="panel" id="panelWords" hidden aria-label="Pronunciation">
+  <div class="panel__head"><h2>Pronunciation</h2><button class="panel__x" data-close aria-label="Close">✕</button></div>
+  <div class="panel__body">
+    <p class="hint">Cue found these abbreviations in your document. Edit anything it says wrongly — write it the way it should sound.</p>
+    <div class="lex" id="lexList"></div>
+    <div class="lex__add">
+      <input type="text" id="lexFrom" placeholder="Written" spellcheck="false">
+      <input type="text" id="lexTo" placeholder="Spoken" spellcheck="false">
+      <button class="btn" id="lexAdd" type="button">Add</button>
+    </div>
+    <button class="btn btn--ghost" id="lexReset" type="button">Reset to defaults</button>
+  </div>
+</div>
+
+<div class="panel" id="panelExport" hidden aria-label="Export">
+  <div class="panel__head"><h2>Export</h2><button class="panel__x" data-close aria-label="Close">✕</button></div>
+  <div class="panel__body">
+    <p class="hint">Browsers will not let a page record their built-in voices, so saving a file needs a cloud voice. Set one up under <b>Voice</b>, then render here.</p>
+    <label class="field field--inline"><span class="field__label">Range</span>
+      <select id="expRange"><option value="all">Whole document</option><option value="chapter">Current section</option></select>
+    </label>
+    <button class="btn btn--solid" id="btnRender" type="button">Render audio</button>
+    <div class="prog" id="expProg" hidden><div class="prog__bar"><i id="expBar"></i></div><p id="expStatus"></p></div>
+    <a class="btn btn--solid" id="btnDownload" hidden download>Download MP3</a>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden></div>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js" defer></script>
+<script type="module" src="./src/app.js"></script>
+</body>
+</html>
