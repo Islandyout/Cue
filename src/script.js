@@ -110,14 +110,27 @@ export const DEFAULT_LEXICON = {
   'BRF1':'B R F one','P24':'P twenty-four','S02':'S oh two','P2A':'P two A',
 };
 
-const NOT_ACRONYMS = new Set(['THE','AND','FOR','YOU','ALL','NOT','BUT','ONE','TWO','SIX','TEN',
-  'NEW','OUT','OWN','WHO','WHY','HOW','ITS','ARE','WAS','CAN','MAY','PER','VAT','TOTAL','PART',
-  'NOTE','FIGURE','TABLE','CHAPTER','APPENDIX','CONTENTS','WEEKS','WEEK','ZONE','TIER','RISK',
-  'STAGE','ITEM','COST','LEAN','KEY','TRUE','HOUR','PAID','WAGES','FIRST','WHAT','WHEN','WHERE']);
+const NOT_ACRONYMS = new Set(('THE AND FOR YOU ALL NOT BUT ONE TWO SIX TEN NEW OUT OWN WHO WHY HOW ' +
+  'ITS ARE WAS CAN MAY PER TOTAL PART NOTE FIGURE TABLE CHAPTER APPENDIX CONTENTS WEEKS WEEK ZONE ' +
+  'TIER RISK STAGE ITEM COST LEAN KEY TRUE HOUR PAID WAGES FIRST WHAT WHEN WHERE ABOUT AFTER AGAIN ' +
+  'ALSO ANY BEFORE BEING BELOW BEST BOTH DOWN EACH EVEN EVERY FROM FULL GOOD HAVE HERE HIGH INTO ' +
+  'JUST KEEP KIND LAST LESS LIKE LONG MADE MAKE MANY MORE MOST MUCH MUST NEED NEXT ONCE ONLY OPEN ' +
+  'OVER PLAN REAL SAME SOME SUCH TAKE THAN THAT THEM THEN THERE THESE THEY THIS TIME VERY WANT ' +
+  'WELL WERE WHICH WHILE WILL WITH WORK YOUR YEAR DAYS PLUS END NOW OFF PAY PUT SEE SET TOP USE ' +
+  'WAY YES LOW MID BIG OLD RUN GET GOT HAS HAD ITS OUR HIS HER ONE DUE VIA ADD CUT FIX JOB DAY ' +
+  'MONTH TOTALS RANGE VOICE EXPORT READY START STOP').split(' '));
+
+const shouty = t => {
+  if (!t) return false;
+  if (t.trim().split(/\s+/).length < 2) return false;
+  const letters = t.replace(/[^A-Za-z]/g,'');
+  return letters.length >= 6 && (t.replace(/[^A-Z]/g,'').length / letters.length) > 0.75;
+};
 
 export function collectAcronyms(blocks){
   const found = new Map();
   const scan = t => {
+    if (shouty(t)) return;
     for (const m of (t || '').matchAll(/\b[A-Z][A-Z0-9]{1,5}\b/g)){
       const tok = m[0];
       if (NOT_ACRONYMS.has(tok)) continue;
@@ -126,6 +139,7 @@ export function collectAcronyms(blocks){
     }
   };
   blocks.forEach(b => {
+    if (b.type === 'label' || b.type === 'h1') return;   // headings are styled, not abbreviated
     scan(b.text);
     (b.items || []).forEach(i => scan(i.text));
     (b.rows || []).forEach(r => r.forEach(scan));
